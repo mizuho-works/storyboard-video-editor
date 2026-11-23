@@ -20,6 +20,13 @@ interface EditorState {
   duplicateScene: (sceneId: string) => string | null;
   splitScene: (sceneId: string, localTimeMs: number) => string | null;
   reorderScenes: (fromIndex: number, toIndex: number) => void;
+  /** シーンを前(-1)/後ろ(+1)へ1つ入れ替える。端なら何もせずfalseを返す。 */
+  moveScene: (sceneId: string, delta: -1 | 1) => boolean;
+  /**
+   * 指定シーンの直後に複数シーンを連続で挿入する(1回の操作=1回の取り消し単位)。
+   * 指定シーンが空(レイヤー無し)なら、そのシーンを最初の新シーンで置き換える。
+   */
+  insertScenesAfter: (afterSceneId: string, scenes: Scene[]) => void;
   updateSceneDuration: (sceneId: string, duration: number) => void;
   updateScene: (sceneId: string, patch: Partial<Scene>) => void;
 
@@ -119,6 +126,31 @@ export const useProjectStore = create<EditorState>((set, get) => {
       const [moved] = scenes.splice(fromIndex, 1);
       scenes.splice(toIndex, 0, moved);
       commit({ ...state.project, scenes, ...touch() });
+    },
+
+    moveScene: (sceneId, delta) => {
+      const state = get();
+      if (!state.project) return false;
+      const from = state.project.scenes.findIndex((s) => s.id === sceneId);
+      const to = from + delta;
+      if (from === -1 || to < 0 || to >= state.project.scenes.length) return false;
+      const scenes = [...state.project.scenes];
+      const [moved] = scenes.splice(from, 1);
+      scenes.splice(to, 0, moved);
+      commit({ ...state.project, scenes, ...touch() });
+      return true;
+    },
+
+    insertScenesAfter: (afterSceneId, newScenes) => {
+      const state = get();
+      if (!state.project || newScenes.length === 0) return;
+      const index = state.project.scenes.findIndex((s) => s.id === afterSceneId);
+      if (index === -1) return;
+      const scenes = [...state.project.scenes];
+      const target = scenes[index];
+      const replace = target.layers.length === 0 && !target.transitionOut;
+      scenes.splice(replace ? index : index + 1, replace ? 1 : 0, ...newScenes);
+      commit({ ...state.project, scenes, ...touch() }, { selectedLayerIds: [] });
     },
 
     updateSceneDuration: (sceneId, duration) => {

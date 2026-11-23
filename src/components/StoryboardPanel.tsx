@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { getSceneStartMs } from '../domain/timeline';
 import type { Project, Scene, TransitionConfig } from '../domain/types';
 import type { ProjectPlaybackEngine } from '../rendering/useProjectPlaybackEngine';
 import { useProjectStore } from '../state/projectStore';
 import { NumberField } from './NumberField';
 import {
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ChevronUpIcon,
   CopyIcon,
   MinusIcon,
@@ -17,6 +20,7 @@ import {
   TrashIcon,
 } from './icons';
 import { LayerTimelinePanel } from './LayerTimelinePanel';
+import { PlaybackSpeedButton } from './PlaybackSpeedButton';
 import { SceneTimelineStrip } from './SceneTimelineStrip';
 
 const TRANSITION_OPTIONS: { type: TransitionConfig['type'] | 'none'; label: string; preview: string }[] = [
@@ -167,6 +171,7 @@ export function StoryboardPanel({ project, currentSceneId, onSelectScene, engine
   const duplicateScene = useProjectStore((s) => s.duplicateScene);
   const removeScene = useProjectStore((s) => s.removeScene);
   const splitScene = useProjectStore((s) => s.splitScene);
+  const moveScene = useProjectStore((s) => s.moveScene);
 
   const currentSceneIndex = project.scenes.findIndex((s) => s.id === currentSceneId);
   const currentScene = currentSceneIndex !== -1 ? project.scenes[currentSceneIndex] : null;
@@ -180,6 +185,15 @@ export function StoryboardPanel({ project, currentSceneId, onSelectScene, engine
     if (!currentSceneId) return;
     const newId = duplicateScene(currentSceneId);
     if (newId) onSelectScene(newId);
+  }
+
+  function handleMoveScene(delta: -1 | 1) {
+    if (!currentSceneId) return;
+    if (moveScene(currentSceneId, delta)) {
+      // 並べ替え後も、移動したクリップの先頭を再生位置にして選択を保つ。
+      const updated = useProjectStore.getState().project;
+      if (updated) engine.seek(getSceneStartMs(updated, currentSceneId));
+    }
   }
 
   function handleRemoveScene() {
@@ -209,6 +223,7 @@ export function StoryboardPanel({ project, currentSceneId, onSelectScene, engine
         <span className="storyboard__time">
           {formatTime(engine.currentTimeMs)}s / {formatTime(engine.totalDurationMs)}s
         </span>
+        <PlaybackSpeedButton engine={engine} className="playback-speed" />
         <button
           className="btn-icon storyboard__split"
           onClick={handleSplit}
@@ -229,6 +244,24 @@ export function StoryboardPanel({ project, currentSceneId, onSelectScene, engine
       />
       {isTimingOpen && currentScene && <LayerTimelinePanel scene={currentScene} project={project} engine={engine} />}
       <div className="storyboard__actions">
+        <button
+          className="mobile-icon-btn"
+          onClick={() => handleMoveScene(-1)}
+          disabled={!currentSceneId || currentSceneIndex <= 0}
+          title="このクリップを前へ移動"
+          aria-label="このクリップを前へ移動"
+        >
+          <ChevronLeftIcon size={18} />
+        </button>
+        <button
+          className="mobile-icon-btn"
+          onClick={() => handleMoveScene(1)}
+          disabled={!currentSceneId || currentSceneIndex >= project.scenes.length - 1}
+          title="このクリップを後ろへ移動"
+          aria-label="このクリップを後ろへ移動"
+        >
+          <ChevronRightIcon size={18} />
+        </button>
         <button
           className="mobile-icon-btn"
           onClick={handleDuplicateScene}

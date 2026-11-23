@@ -1982,3 +1982,32 @@ button.editor__menubar-item[aria-expanded='true'] {
   padding: 20px 0;
 }
 
+
+/* チップ内: 番号と長さ(秒)を縦に並べ、幅が狭くても長さが読めるようにする */
+.scene-timeline__chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 2px;
+  overflow: hidden;
+}
+
+.scene-timeline__chip-dur {
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+/* プレビュー再生速度ボタン */
+.playback-speed {
+  min-width: 38px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

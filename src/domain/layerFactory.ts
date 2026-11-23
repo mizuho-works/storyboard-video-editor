@@ -161,3 +161,20 @@ export function createShapeLayer(scene: Scene): ShapeLayer {
     zIndex: scene.layers.length + 1,
   };
 }
+
+/**
+ * 動画/画像素材から「その素材だけの1シーン」を作る。複数素材をまとめて取り込んだ際に、
+ * 既存シーンの上に重ねず、連続したクリップとして並べるために使う。
+ * 動画はシーンの長さを素材の長さに合わせる。音声など対象外の素材はnull。
+ */
+export function createClipSceneFromAsset(project: Project, asset: MediaAsset): Scene | null {
+  const blank: Scene = { id: nanoid(), duration: 5000, layers: [] };
+  if (asset.kind === 'video') {
+    const { layer } = createVideoLayerForScene(project, blank, asset);
+    return { ...blank, duration: asset.durationMs && asset.durationMs > 0 ? asset.durationMs : blank.duration, layers: [layer] };
+  }
+  if (asset.kind === 'image') {
+    return { ...blank, layers: [createImageLayerForScene(project, blank, asset)] };
+  }
+  return null;
+}

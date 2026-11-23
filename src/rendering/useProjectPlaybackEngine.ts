@@ -12,6 +12,9 @@ export interface ProjectPlaybackEngine {
   play: () => void;
   pause: () => void;
   seek: (globalTimeMs: number) => void;
+  /** プレビュー再生の倍速(最大2倍)。書き出しには影響しない。 */
+  playbackRate: number;
+  setPlaybackRate: (rate: number) => void;
   setHiddenLayerId: (layerId: string | null) => void;
   /**
    * React state（currentTimeMs/position）を経由しない、間引き無しの現在時刻。
@@ -33,7 +36,8 @@ const SEEK_THRESHOLD_PAUSED_SEC = 0.08;
  * 「じーー」というブザーのような異音でループする。そのため、ソースの長さを超えた
  * 分は再生を試みず一時停止のままにする。
  */
-function syncMediaElement(el: HTMLMediaElement, targetSec: number, shouldPlay: boolean): void {
+function syncMediaElement(el: HTMLMediaElement, targetSec: number, shouldPlay: boolean, rate = 1): void {
+  if (el.playbackRate !== rate) el.playbackRate = rate;
   const hasEnded = Number.isFinite(el.duration) && el.duration > 0 && targetSec >= el.duration - 0.02;
   if (hasEnded) {
     if (!el.paused) el.pause();
@@ -58,6 +62,8 @@ export function useProjectPlaybackEngine(
   const [currentTimeMsDisplay, setCurrentTimeMsDisplay] = useState(0);
   const timeRef = useRef(0);
   const isPlayingRef = useRef(false);
+  const speedRef = useRef(1);
+  const [playbackRate, setPlaybackRateState] = useState(1);
   const assetsRef = useRef<ResolvedAssetMap>(new Map());
   const audioAssetsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const rafRef = useRef<number | null>(null);
@@ -214,7 +220,7 @@ export function useProjectPlaybackEngine(
       if (project) {
         const totalDuration = getTotalDurationMs(project);
         if (isPlayingRef.current) {
-          timeRef.current = Math.min(timeRef.current + delta, totalDuration);
+          timeRef.current = Math.min(timeRef.current + delta * speedRef.current, totalDuration);
         }
 
         let position = resolvePosition(project, timeRef.current);
@@ -258,7 +264,7 @@ export function useProjectPlaybackEngine(
               if (isCurrentScene) {
                 const targetSec = (layer.trimStart + position.localTimeMs) / 1000;
                 el.volume = layer.volume;
-                syncMediaElement(el, targetSec, isPlayingRef.current);
+                syncMediaElement(el, targetSec, isPlayingRef.current, speedRef.current);
               } else if (!currentSceneAudioMediaIds.has(layer.mediaId) && !el.paused) {
                 el.pause();
               }
@@ -285,7 +291,7 @@ export function useProjectPlaybackEngine(
                   const targetSec = (layer.trimStart + position.localTimeMs) / 1000;
                   el.muted = layer.muted;
                   el.volume = layer.muted ? 0 : layer.volume;
-                  syncMediaElement(el, targetSec, isPlayingRef.current);
+                  syncMediaElement(el, targetSec, isPlayingRef.current, speedRef.current);
                 } else if (!currentSceneVideoMediaIds.has(layer.mediaId) && !el.paused) {
                   el.pause();
                 }
@@ -364,12 +370,12 @@ export function useProjectPlaybackEngine(
           if (layer.type === 'video') {
             const el = assetsRef.current.get(layer.mediaId);
             if (el instanceof HTMLVideoElement) {
-              syncMediaElement(el, (layer.trimStart + position.localTimeMs) / 1000, true);
+              syncMediaElement(el, (layer.trimStart + position.localTimeMs) / 1000, true, speedRef.current);
             }
           } else if (layer.type === 'audio') {
             const el = audioAssetsRef.current.get(layer.mediaId);
             if (el) {
-              syncMediaElement(el, (layer.trimStart + position.localTimeMs) / 1000, true);
+              syncMediaElement(el, (layer.trimStart + position.localTimeMs) / 1000, true, speedRef.current);
             }
           }
         }
@@ -389,6 +395,12 @@ export function useProjectPlaybackEngine(
     [project],
   );
 
+  const setPlaybackRate = useCallback((rate: number) => {
+    const clamped = Math.min(2, Math.max(0.25, rate));
+    speedRef.current = clamped;
+    setPlaybackRateState(clamped);
+  }, []);
+
   const getLiveTimeMs = useCallback(() => timeRef.current, []);
 
   return {
@@ -399,6 +411,8 @@ export function useProjectPlaybackEngine(
     play,
     pause,
     seek,
+    playbackRate,
+    setPlaybackRate,
     setHiddenLayerId,
     getLiveTimeMs,
   };

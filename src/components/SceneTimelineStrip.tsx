@@ -25,6 +25,15 @@ interface Props {
   zoom?: number;
 }
 
+/** クリップの長さ表示（例: 5.0s / 1:05）。各クリップが何秒か一目で分かるようにする。 */
+function formatChipDuration(ms: number): string {
+  const sec = ms / 1000;
+  if (sec < 60) return `${sec.toFixed(1)}s`;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 /** シーンのプレビューに使う「主役」の動画/画像レイヤーのmediaIdを返す（無ければnull） */
 function getSceneMainMediaId(scene: Scene): string | null {
   const visual = scene.layers
@@ -307,7 +316,8 @@ export function SceneTimelineStrip({ project, engine, currentSceneId, autoCenter
               }}
               onClick={autoCenter ? () => engine.seek(getSceneStartMs(project, scene.id)) : undefined}
             >
-              {i + 1}
+              <span className="scene-timeline__chip-num">{i + 1}</span>
+              <span className="scene-timeline__chip-dur">{formatChipDuration(scene.duration)}</span>
             </button>
           ))}
           {/* スクロールする内容の一部として置くことで、チップ列と一緒にスクロールする。 */}

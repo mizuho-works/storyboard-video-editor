@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { createCaptionLayer, createImageLayerForScene, createTextLayer, cropPatch } from '../domain/layerFactory';
+import {
+  createCaptionLayer,
+  createClipSceneFromAsset,
+  createImageLayerForScene,
+  createTextLayer,
+  cropPatch,
+} from '../domain/layerFactory';
 import { getSceneStartMs } from '../domain/timeline';
-import type { ImageLayer } from '../domain/types';
+import type { ImageLayer, Scene } from '../domain/types';
 import { exportProjectToMp4, type ExportQuality } from '../export/exportPipeline';
 import { useProjectPlaybackEngine } from '../rendering/useProjectPlaybackEngine';
 import { addMediaFile } from '../storage/mediaRepository';
@@ -26,6 +32,7 @@ export function EditorView() {
   const selectLayer = useProjectStore((s) => s.selectLayer);
   const selectedLayerIds = useProjectStore((s) => s.selectedLayerIds);
   const addLayerToScene = useProjectStore((s) => s.addLayerToScene);
+  const insertScenesAfter = useProjectStore((s) => s.insertScenesAfter);
   const addMediaAsset = useProjectStore((s) => s.addMediaAsset);
   const updateLayer = useProjectStore((s) => s.updateLayer);
   const [exporting, setExporting] = useState(false);
@@ -65,15 +72,24 @@ export function EditorView() {
 
   async function handleQuickInsertImages(files: FileList | null) {
     if (!files || !project) return;
+    const chain = files.length > 1;
+    const clipScenes: Scene[] = [];
     for (const file of Array.from(files)) {
       try {
         const asset = await addMediaFile(project.id, file);
         addMediaAsset(asset);
-        addLayerToScene(currentScene.id, createImageLayerForScene(project, currentScene, asset));
+        if (chain) {
+          const clip = createClipSceneFromAsset(project, asset);
+          if (clip) clipScenes.push(clip);
+        } else {
+          addLayerToScene(currentScene.id, createImageLayerForScene(project, currentScene, asset));
+        }
       } catch (err) {
         console.error(err);
       }
     }
+    // 複数枚まとめて選んだときは重ねずに、選んだ順に連続したクリップとして並べる。
+    if (clipScenes.length > 0) insertScenesAfter(currentScene.id, clipScenes);
   }
 
   async function handleExport() {

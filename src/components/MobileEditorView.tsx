@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   createCaptionLayer,
+  createClipSceneFromAsset,
   createImageLayerForScene,
   createShapeLayer,
   createTextLayer,
   cropPatch,
 } from '../domain/layerFactory';
 import { getSceneStartMs } from '../domain/timeline';
-import type { ImageLayer } from '../domain/types';
+import type { ImageLayer, Scene } from '../domain/types';
 import { exportProjectToMp4, type ExportQuality } from '../export/exportPipeline';
 import { useProjectPlaybackEngine } from '../rendering/useProjectPlaybackEngine';
 import { addMediaFile } from '../storage/mediaRepository';
@@ -19,6 +20,8 @@ import {
   AlignCenterHIcon,
   CaptionIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ChevronUpIcon,
   CloseIcon,
   CopyIcon,
@@ -38,6 +41,7 @@ import {
   UploadIcon,
 } from './icons';
 import { LayerTimelinePanel } from './LayerTimelinePanel';
+import { PlaybackSpeedButton } from './PlaybackSpeedButton';
 import { MediaLibraryPanel } from './MediaLibraryPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { RecordingPanel } from './RecordingPanel';
@@ -55,6 +59,8 @@ export function MobileEditorView() {
   const closeProject = useProjectStore((s) => s.closeProject);
   const selectedLayerIds = useProjectStore((s) => s.selectedLayerIds);
   const addLayerToScene = useProjectStore((s) => s.addLayerToScene);
+  const insertScenesAfter = useProjectStore((s) => s.insertScenesAfter);
+  const moveScene = useProjectStore((s) => s.moveScene);
   const addMediaAsset = useProjectStore((s) => s.addMediaAsset);
   const updateLayer = useProjectStore((s) => s.updateLayer);
   const addScene = useProjectStore((s) => s.addScene);
@@ -114,6 +120,7 @@ export function MobileEditorView() {
 
   if (!project) return null;
   const currentScene = engine.position?.scene ?? project.scenes[0];
+  const currentSceneIndex = project.scenes.findIndex((s) => s.id === currentSceneId);
   const selectedLayers = currentScene.layers.filter((l) => selectedLayerIds.includes(l.id));
   const croppingLayer = currentScene.layers.find(
     (l): l is ImageLayer => l.id === croppingImageLayerId && l.type === 'image',
@@ -141,15 +148,24 @@ export function MobileEditorView() {
 
   async function handleQuickInsertImages(files: FileList | null) {
     if (!files || !project) return;
+    const chain = files.length > 1;
+    const clipScenes: Scene[] = [];
     for (const file of Array.from(files)) {
       try {
         const asset = await addMediaFile(project.id, file);
         addMediaAsset(asset);
-        addLayerToScene(currentScene.id, createImageLayerForScene(project, currentScene, asset));
+        if (chain) {
+          const clip = createClipSceneFromAsset(project, asset);
+          if (clip) clipScenes.push(clip);
+        } else {
+          addLayerToScene(currentScene.id, createImageLayerForScene(project, currentScene, asset));
+        }
       } catch (err) {
         console.error(err);
       }
     }
+    // 複数枚まとめて選んだときは重ねずに、選んだ順に連続したクリップとして並べる。
+    if (clipScenes.length > 0) insertScenesAfter(currentScene.id, clipScenes);
   }
 
   function handleAddScene() {
@@ -161,6 +177,15 @@ export function MobileEditorView() {
     if (!currentSceneId) return;
     const newId = duplicateScene(currentSceneId);
     if (newId && project) engine.seek(getSceneStartMs(project, newId));
+  }
+
+  function handleMoveScene(delta: -1 | 1) {
+    if (!currentSceneId) return;
+    if (moveScene(currentSceneId, delta)) {
+      // 並べ替え後も、移動したクリップの先頭を再生位置にして選択を保つ。
+      const updated = useProjectStore.getState().project;
+      if (updated) engine.seek(getSceneStartMs(updated, currentSceneId));
+    }
   }
 
   function handleRemoveScene() {
@@ -223,6 +248,7 @@ export function MobileEditorView() {
           </button>
         </div>
         <div className="mobile-editor__playback-right">
+          <PlaybackSpeedButton engine={engine} className="mobile-icon-btn playback-speed" />
           <button className="mobile-icon-btn" onClick={undo} disabled={!canUndo} title="元に戻す">
             <UndoIcon size={18} />
           </button>
@@ -255,6 +281,24 @@ export function MobileEditorView() {
           <SceneTimelineStrip project={project} engine={engine} currentSceneId={currentSceneId} autoCenter />
           {isTimingOpen && <LayerTimelinePanel scene={currentScene} project={project} engine={engine} />}
           <div className="mobile-editor__scenes-actions">
+            <button
+              className="mobile-icon-btn"
+              onClick={() => handleMoveScene(-1)}
+              disabled={!currentSceneId || currentSceneIndex <= 0}
+              title="このクリップを前へ移動"
+              aria-label="このクリップを前へ移動"
+            >
+              <ChevronLeftIcon size={18} />
+            </button>
+            <button
+              className="mobile-icon-btn"
+              onClick={() => handleMoveScene(1)}
+              disabled={!currentSceneId || currentSceneIndex >= project.scenes.length - 1}
+              title="このクリップを後ろへ移動"
+              aria-label="このクリップを後ろへ移動"
+            >
+              <ChevronRightIcon size={18} />
+            </button>
             <button
               className="mobile-icon-btn"
               onClick={handleDuplicateScene}

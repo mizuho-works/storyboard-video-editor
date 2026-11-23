@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
-import { createImageLayerForScene, createVideoLayerForScene } from '../domain/layerFactory';
+import { createClipSceneFromAsset, createImageLayerForScene, createVideoLayerForScene } from '../domain/layerFactory';
 import type { AudioLayer, MediaAsset, Project, Scene } from '../domain/types';
 import { addMediaFile, deleteMedia, getThumbnailUrl } from '../storage/mediaRepository';
 import { useProjectStore } from '../state/projectStore';
@@ -17,6 +17,7 @@ export function MediaLibraryPanel({ project, scene, onClose }: Props) {
   const removeMediaAsset = useProjectStore((s) => s.removeMediaAsset);
   const addLayerToScene = useProjectStore((s) => s.addLayerToScene);
   const updateSceneDuration = useProjectStore((s) => s.updateSceneDuration);
+  const insertScenesAfter = useProjectStore((s) => s.insertScenesAfter);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
@@ -40,13 +41,23 @@ export function MediaLibraryPanel({ project, scene, onClose }: Props) {
   async function handleFiles(files: FileList | null) {
     if (!files) return;
     setUploading(true);
+    const uploaded: MediaAsset[] = [];
     for (const file of Array.from(files)) {
       try {
         const asset = await addMediaFile(project.id, file);
         addMediaAsset(asset);
+        uploaded.push(asset);
       } catch (err) {
         console.error(err);
       }
+    }
+    // 複数選択したときは、1つ目の動画の上に重ねず、選んだ順に連続したクリップとして
+    // 現在のシーンの後ろへ並べる（1個だけ選んだ場合は従来通りライブラリに追加するだけ）。
+    if (files.length > 1) {
+      const clipScenes = uploaded
+        .map((asset) => createClipSceneFromAsset(project, asset))
+        .filter((s): s is Scene => s !== null);
+      if (clipScenes.length > 0) insertScenesAfter(scene.id, clipScenes);
     }
     setUploading(false);
   }
